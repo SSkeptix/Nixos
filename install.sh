@@ -72,6 +72,19 @@ nix-shell -p git qrencode --run '
     echo "Press ENTER to continue..."
     read dummy < /dev/tty
 
+    REPO_HOST=$(echo "${REPOSITORY}" | sed "s/.*@\([^:]*\).*/\1/")
+    if grep -q "${REPO_HOST}" "${ACTUAL_HOME}/.ssh/known_hosts" 2>/dev/null; then
+        echo "✓ ${REPO_HOST} already in known hosts"
+    else
+        echo "Adding ${REPO_HOST} to known hosts..."
+        ssh-keyscan -t ed25519 "${REPO_HOST}" >> "${ACTUAL_HOME}/.ssh/known_hosts"
+        chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
+        if [ -n "$SUDO_USER" ]; then
+            chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
+        fi
+        echo "✓ ${REPO_HOST} host key added"
+    fi
+
     echo ""
     echo "Cloning repository..."
     if [ -d "${DOTFILES_FOLDER_PATH}" ]; then
