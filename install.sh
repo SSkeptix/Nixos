@@ -59,8 +59,8 @@ nix-shell -p git qrencode nix sudo openssh --run '
 
     if [ ! -d "$SSH_DIR" ]; then
         echo "Creating $SSH_DIR..."
-        mkdir -p "$SSH_DIR"
-        chmod 700 "$SSH_DIR"
+        sudo -u "$ACTUAL_USER" mkdir -p "$SSH_DIR"
+        sudo -u "$ACTUAL_USER" chmod 700 "$SSH_DIR"
         chown "$ACTUAL_USER" "$SSH_DIR"
     else
         echo "$SSH_DIR already exists. Fixing permissions..."
