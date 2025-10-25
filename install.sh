@@ -116,6 +116,13 @@ nix-shell -p git qrencode nix sudo openssh --run '
 
     cd "${DOTFILES_FOLDER_PATH}"
 
+    read -p "Enter host [default: nixos]: " HOST < /dev/tty
+    HOST=${HOST:-nixos}
+    if [ ! -d "./hosts/$HOST" ]; then
+        echo "❌ Host \"$HOST\" does not exist in your nixos configuration. Exiting."
+        exit 1
+    fi
+
     echo ""
     read -p "Do you want to generate a new hardware-configuration.nix? [yes/Y default] or use from repo [no/N]: " generate_hw < /dev/tty
     generate_hw=${generate_hw:-yes}
@@ -135,8 +142,7 @@ nix-shell -p git qrencode nix sudo openssh --run '
         if [ -f "$HW_FILE" ]; then
             echo ""
             # Construct default target path
-            host=$(hostname)
-            default_target="./hosts/${host}/hardware-configuration.nix"
+            default_target="./hosts/$HOST/hardware-configuration.nix"
             mkdir -p "$(dirname "$default_target")"
 
             read -p "Hardware configuration file exists. Enter target location to move it [default: $default_target]: " target_path < /dev/tty
@@ -147,7 +153,6 @@ nix-shell -p git qrencode nix sudo openssh --run '
             sudo chown "$ACTUAL_USER" "$target_path"
             sudo chmod 644 "$target_path"
             git add -f "$target_path"
-            hardware_config_changed="true"
             echo "✓ Hardware configuration moved and permissions set."
         else
             echo "⚠️  /etc/nixos/hardware-configuration.nix does not exist. Proceeding without moving."
@@ -162,11 +167,7 @@ nix-shell -p git qrencode nix sudo openssh --run '
         echo "❌ Error: flake.nix not found in repository."
         exit 1
     fi
-    sudo nixos-rebuild switch --flake .
+    sudo nixos-rebuild switch --flake .#${HOST}
     echo ""
-    echo "✅ Setup complete!"
-
-    if "$hardware_config_changed" = "true"; then
-        echo "Do not forget to commit changes in $target_path"
-    fi
+    echo "✅ Setup complete! Reboot your system."
 '
