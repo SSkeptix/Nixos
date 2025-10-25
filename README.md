@@ -17,10 +17,10 @@ This script automates NixOS setup using your GitHub dotfiles.
 
 ### Usage
 ```bash
-curl -fsSL https://sskeptix.github.io/Nixos/install.sh | sh
+sudo nix-shell -p curl --run 'curl -fsSL https://sskeptix.github.io/Nixos/install.sh | sh'
 ```
 Or for others
 ```bash
-curl -fsSL https://sskeptix.github.io/Nixos/install.sh | sh -s "git@github.com:other/repo.git" "/custom/path"
+sudo nix-shell -p curl --run 'curl -fsSL https://sskeptix.github.io/Nixos/install.sh | sh -s "git@github.com:other/repo.git" "/custom/path"'
 
 ```
