@@ -5,8 +5,14 @@ REPOSITORY="${1:-git@github.com:sskeptix/NixConfig2.git}"
 DOTFILES_FOLDER_RELATIVE_PATH="${2:-.dotfiles}"
 
 echo "Checking sudo privileges..."
-if ! sudo -v; then
-    echo "Error: Current user does not have sudo privileges"
+if ! command -v sudo >/dev/null 2>&1; then
+    echo "Installing temporary sudo..."
+    nix-shell -p sudo --run 'echo "✓ sudo available in nix-shell"'
+fi
+
+if ! sudo -v 2>/dev/null; then
+    echo "Error: Current user does not have sudo privileges."
+    echo "Run this as a user with sudo rights (not as root)."
     exit 1
 fi
 echo "✓ sudo privileges confirmed"
@@ -18,17 +24,28 @@ else
     ACTUAL_USER=$(whoami)
     ACTUAL_HOME="$HOME"
 fi
-REPOSITORY="git@github.com:sskeptix/NixConfig2.git"
+
 DOTFILES_FOLDER_PATH="${ACTUAL_HOME}/${DOTFILES_FOLDER_RELATIVE_PATH}"
+echo ""
 echo "User: ${ACTUAL_USER}"
 echo "Home: ${ACTUAL_HOME}"
 echo "Repository: ${REPOSITORY}"
 echo "Dotfiles path: ${DOTFILES_FOLDER_PATH}"
 
 echo ""
-echo "Entering nix-shell with git and qrencode..."
-nix-shell -p git qrencode --run '
+echo "Checking network..."
+if ! ping -c1 github.com >/dev/null 2>&1; then
+    echo "❌ Network unavailable. Please connect to the Internet and retry."
+    exit 1
+fi
+echo "✓ Network OK"
+
+echo ""
+echo "Entering nix-shell with git, qrencode, nix, and sudo..."
+NIX_CONFIG="experimental-features = nix-command flakes" \
+nix-shell -p git qrencode nix sudo openssh --run '
     set -e
+    export PATH="/run/wrappers/bin:$PATH"
 
     ACTUAL_USER="'"${ACTUAL_USER}"'"
     ACTUAL_HOME="'"${ACTUAL_HOME}"'"
@@ -36,12 +53,11 @@ nix-shell -p git qrencode --run '
     REPOSITORY="'"${REPOSITORY}"'"
 
     SSH_KEY_PATH="${ACTUAL_HOME}/.ssh/id_ed25519"
+
     if [ ! -d "${ACTUAL_HOME}/.ssh" ]; then
         mkdir -p "${ACTUAL_HOME}/.ssh"
         chmod 700 "${ACTUAL_HOME}/.ssh"
-        if [ -n "$SUDO_USER" ]; then
-            chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh"
-        fi
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh"
     fi
 
     if [ -f "${SSH_KEY_PATH}" ]; then
@@ -52,9 +68,7 @@ nix-shell -p git qrencode --run '
         echo ""
         echo "Generating new SSH key..."
         ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "nixos-setup"
-        if [ -n "$SUDO_USER" ]; then
-            chown "${ACTUAL_USER}:${ACTUAL_USER}" "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
-        fi
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
         chmod 600 "${SSH_KEY_PATH}"
         chmod 644 "${SSH_KEY_PATH}.pub"
         echo "✓ SSH key generated"
@@ -62,13 +76,12 @@ nix-shell -p git qrencode --run '
 
     echo ""
     echo "Public SSH key as QR code:"
-    echo ""
     cat "${SSH_KEY_PATH}.pub" | qrencode -t ANSIUTF8
     echo ""
     echo "Public key text:"
     cat "${SSH_KEY_PATH}.pub"
     echo ""
-    echo "Please add this SSH key to your GitHub account."
+    echo "👉 Please add this SSH key to your ${REPO_HOST} account:"
     echo "Press ENTER to continue..."
     read dummy < /dev/tty
 
@@ -78,10 +91,9 @@ nix-shell -p git qrencode --run '
     else
         echo "Adding ${REPO_HOST} to known hosts..."
         ssh-keyscan -t ed25519 "${REPO_HOST}" >> "${ACTUAL_HOME}/.ssh/known_hosts"
+        echo "" >> "${ACTUAL_HOME}/.ssh/known_hosts"
         chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
-        if [ -n "$SUDO_USER" ]; then
-            chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
-        fi
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
         echo "✓ ${REPO_HOST} host key added"
     fi
 
@@ -90,7 +102,6 @@ nix-shell -p git qrencode --run '
     if [ -d "${DOTFILES_FOLDER_PATH}" ]; then
         echo "Directory ${DOTFILES_FOLDER_PATH} already exists. Skipping clone."
     else
-        # Run git clone as the actual user
         if [ -n "$SUDO_USER" ]; then
             sudo -u "${ACTUAL_USER}" git clone "${REPOSITORY}" "${DOTFILES_FOLDER_PATH}"
         else
@@ -103,10 +114,59 @@ nix-shell -p git qrencode --run '
     echo "Configuring git safe directory..."
     sudo git config --system --add safe.directory "${DOTFILES_FOLDER_PATH}"
 
-    echo ""
-    echo "Running nixos-rebuild..."
     cd "${DOTFILES_FOLDER_PATH}"
+
+    echo ""
+    read -p "Do you want to generate a new hardware-configuration.nix? [yes/Y default] or use from repo [no/N]: " generate_hw < /dev/tty
+    generate_hw=${generate_hw:-yes}
+    if echo "$generate_hw" | grep -iqE "^(y|yes)$"; then
+        echo ""
+        echo "Checking /etc/nixos/configuration.nix..."
+        if [ ! -f /etc/nixos/configuration.nix ]; then
+            echo "⚠️  /etc/nixos/configuration.nix not found."
+            echo "Generating default configuration..."
+            sudo nixos-generate-config
+            echo "✓ Default configuration generated."
+        else
+            echo "✓ /etc/nixos/configuration.nix exists."
+        fi
+
+        HW_FILE="/etc/nixos/hardware-configuration.nix"
+        if [ -f "$HW_FILE" ]; then
+            echo ""
+            # Construct default target path
+            host=$(hostname)
+            default_target="./hosts/${host}/hardware-configuration.nix"
+            mkdir -p "$(dirname "$default_target")"
+
+            read -p "Hardware configuration file exists. Enter target location to move it [default: $default_target]: " target_path < /dev/tty
+            target_path=${target_path:-$default_target}
+
+            echo "Moving hardware-configuration.nix to $target_path..."
+            sudo cp -f "$HW_FILE" "$target_path"
+            sudo chown "$ACTUAL_USER" "$target_path"
+            sudo chmod 644 "$target_path"
+            git add -f "$target_path"
+            hardware_config_changed="true"
+            echo "✓ Hardware configuration moved and permissions set."
+        else
+            echo "⚠️  /etc/nixos/hardware-configuration.nix does not exist. Proceeding without moving."
+        fi
+    else
+        echo "Using hardware-configuration.nix from repository. Skipping generation."
+    fi
+
+    echo ""
+    echo "Running nixos-rebuild switch --flake ."
+    if [ ! -f flake.nix ]; then
+        echo "❌ Error: flake.nix not found in repository."
+        exit 1
+    fi
     sudo nixos-rebuild switch --flake .
     echo ""
-    echo "✓ Setup complete!"
+    echo "✅ Setup complete!"
+
+    if "$hardware_config_changed" = "true"; then
+        echo "Do not forget to commit changes in $target_path"
+    fi
 '
