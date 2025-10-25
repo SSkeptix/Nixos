@@ -90,10 +90,8 @@ nix-shell -p git qrencode nix sudo openssh --run '
         echo "✓ ${REPO_HOST} already in known hosts"
     else
         echo "Adding ${REPO_HOST} to known hosts..."
-        ssh-keyscan -t ed25519 "${REPO_HOST}" >> "${ACTUAL_HOME}/.ssh/known_hosts"
-        echo "" >> "${ACTUAL_HOME}/.ssh/known_hosts"
-        chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
+        sudo -u "${ACTUAL_USER}" sh -c "ssh-keyscan -t ed25519 \"${REPO_HOST}\" >> \"${ACTUAL_HOME}/.ssh/known_hosts\""
+        sudo chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
         echo "✓ ${REPO_HOST} host key added"
     fi
 
