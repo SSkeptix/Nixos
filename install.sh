@@ -52,48 +52,58 @@ nix-shell -p git qrencode nix sudo openssh --run '
     DOTFILES_FOLDER_PATH="'"${DOTFILES_FOLDER_PATH}"'"
     REPOSITORY="'"${REPOSITORY}"'"
 
-    SSH_KEY_PATH="${ACTUAL_HOME}/.ssh/id_ed25519"
+    SSH_DIR="${ACTUAL_HOME}/.ssh"
+    SSH_KEY_PATH="${SSH_DIR}/id_ed25519"
+    echo ""
+    echo "✅ Setting up .ssh directory and keys..."
 
-    if [ ! -d "${ACTUAL_HOME}/.ssh" ]; then
-        mkdir -p "${ACTUAL_HOME}/.ssh"
-        chmod 700 "${ACTUAL_HOME}/.ssh"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh"
-    fi
-
-    if [ -f "${SSH_KEY_PATH}" ]; then
-        echo ""
-        echo "SSH key already exists at ${SSH_KEY_PATH}"
-        echo "Using existing key..."
+    if [ ! -d "$SSH_DIR" ]; then
+        echo "Creating $SSH_DIR..."
+        mkdir -p "$SSH_DIR"
+        chmod 700 "$SSH_DIR"
+        chown "$ACTUAL_USER" "$SSH_DIR"
     else
-        echo ""
-        echo "Generating new SSH key..."
-        ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "nixos-setup"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
-        chmod 600 "${SSH_KEY_PATH}"
-        chmod 644 "${SSH_KEY_PATH}.pub"
-        echo "✓ SSH key generated"
+        echo "$SSH_DIR already exists. Fixing permissions..."
+        chmod 700 "$SSH_DIR"
+        chown "$ACTUAL_USER" "$SSH_DIR"
+    fi
+
+    if [ ! -f "$SSH_KEY_PATH" ]; then
+        echo "Generating SSH key..."
+        sudo -u "$ACTUAL_USER" ssh-keygen -t ed25519 -f "$SSH_KEY_PATH" -N "" -C "nixos-setup"
+    else
+        echo "SSH key already exists at $SSH_KEY_PATH"
+    fi
+
+    # Set proper permissions on key files
+    chmod 600 "$SSH_KEY_PATH"
+    chmod 644 "${SSH_KEY_PATH}.pub"
+    chown "$ACTUAL_USER" "$SSH_KEY_PATH" "${SSH_KEY_PATH}.pub"
+
+    # Ensure known_hosts exists and is writable
+    KNOWN_HOSTS="${SSH_DIR}/known_hosts"
+    touch "$KNOWN_HOSTS"
+    chmod 644 "$KNOWN_HOSTS"
+    chown "$ACTUAL_USER" "$KNOWN_HOSTS"
+
+    # Add repository host to known_hosts safely
+    REPO_HOST=$(echo "${REPOSITORY}" | sed "s/.*@\([^:]*\).*/\1/")
+    if grep -q "${REPO_HOST}" "$KNOWN_HOSTS" 2>/dev/null; then
+        echo "✓ $REPO_HOST already in known_hosts"
+    else
+        echo "Adding $REPO_HOST to known_hosts..."
+        sudo -u "$ACTUAL_USER" ssh-keyscan -t ed25519 "$REPO_HOST" >> "$KNOWN_HOSTS"
+        chmod 644 "$KNOWN_HOSTS"
+        chown "$ACTUAL_USER" "$KNOWN_HOSTS"
+        echo "✓ Host key added"
     fi
 
     echo ""
-    echo "Public SSH key as QR code:"
-    cat "${SSH_KEY_PATH}.pub" | qrencode -t ANSIUTF8
-    echo ""
-    echo "Public key text:"
+    echo "Public SSH key:"
     cat "${SSH_KEY_PATH}.pub"
     echo ""
-    echo "👉 Please add this SSH key to your ${REPO_HOST} account:"
-    echo "Press ENTER to continue..."
+    echo "👉 Please add this SSH key to your $REPO_HOST account and press ENTER to continue..."
     read dummy < /dev/tty
-
-    REPO_HOST=$(echo "${REPOSITORY}" | sed "s/.*@\([^:]*\).*/\1/")
-    if grep -q "${REPO_HOST}" "${ACTUAL_HOME}/.ssh/known_hosts" 2>/dev/null; then
-        echo "✓ ${REPO_HOST} already in known hosts"
-    else
-        echo "Adding ${REPO_HOST} to known hosts..."
-        sudo -u "${ACTUAL_USER}" sh -c "ssh-keyscan -t ed25519 \"${REPO_HOST}\" >> \"${ACTUAL_HOME}/.ssh/known_hosts\""
-        sudo chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
-        echo "✓ ${REPO_HOST} host key added"
-    fi
 
     echo ""
     echo "Cloning repository..."
