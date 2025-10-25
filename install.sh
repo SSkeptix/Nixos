@@ -57,7 +57,7 @@ nix-shell -p git qrencode nix sudo openssh --run '
     if [ ! -d "${ACTUAL_HOME}/.ssh" ]; then
         mkdir -p "${ACTUAL_HOME}/.ssh"
         chmod 700 "${ACTUAL_HOME}/.ssh"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh"
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh"
     fi
 
     if [ -f "${SSH_KEY_PATH}" ]; then
@@ -68,7 +68,7 @@ nix-shell -p git qrencode nix sudo openssh --run '
         echo ""
         echo "Generating new SSH key..."
         ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "nixos-setup"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
         chmod 600 "${SSH_KEY_PATH}"
         chmod 644 "${SSH_KEY_PATH}.pub"
         echo "✓ SSH key generated"
@@ -93,7 +93,7 @@ nix-shell -p git qrencode nix sudo openssh --run '
         ssh-keyscan -t ed25519 "${REPO_HOST}" >> "${ACTUAL_HOME}/.ssh/known_hosts"
         echo "" >> "${ACTUAL_HOME}/.ssh/known_hosts"
         chmod 644 "${ACTUAL_HOME}/.ssh/known_hosts"
-        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}:${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
+        [ -n "$SUDO_USER" ] && chown "${ACTUAL_USER}" "${ACTUAL_HOME}/.ssh/known_hosts"
         echo "✓ ${REPO_HOST} host key added"
     fi
 
