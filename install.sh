@@ -99,10 +99,14 @@ nix-shell -p git qrencode nix sudo openssh --run '
     fi
 
     echo ""
-    echo "Public SSH key:"
+    echo "Public SSH key as QR code:"
+    cat "${SSH_KEY_PATH}.pub" | qrencode -t ANSIUTF8
+    echo ""
+    echo "Public key text:"
     cat "${SSH_KEY_PATH}.pub"
     echo ""
-    echo "👉 Please add this SSH key to your $REPO_HOST account and press ENTER to continue..."
+    echo "👉 Please add this SSH key to your ${REPO_HOST} account:"
+    echo "Press ENTER to continue..."
     read dummy < /dev/tty
 
     echo ""
